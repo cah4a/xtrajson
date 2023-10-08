@@ -1,0 +1,5 @@
+# EXTRAJSON
+
+Transforms objects to json serializable representations and back.
+
+Supports `undefined`, `Buffer`, `Date`, `BigInt` and custom types using custom transformers.
