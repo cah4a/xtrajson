@@ -4,12 +4,22 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "vitest",
+    "build": "tsup src/index.ts --dts"
   },
-  "keywords": [],
+  "keywords": [
+    "json",
+    "serialization"
+  ],
+  "files": [
+    "dist"
+  ],
   "author": "Sancha <cah4o3@gmail.com>",
-  "license": "ISC",
+  "license": "MIT",
+  "repository": "https://github.com/cah4a/xtrajson",
   "devDependencies": {
+    "@types/lodash": "^4.14.199",
+    "buffer": "^6.0.3",
     "lodash": "^4.17.21",
     "tsup": "^7.2.0",
     "vitest": "^0.34.6"

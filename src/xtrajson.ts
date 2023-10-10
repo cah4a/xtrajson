@@ -3,18 +3,20 @@ import { PROCEED, transformDeep } from "./transformDeep";
 
 const MAGIC = "ƒ";
 
-type Transformer<T, S> = {
+export type Transformer<T, S> = {
     name: string;
-    isApplicable(value: any): value is T;
+    key: string;
+    isApplicable(value: unknown): value is T;
     serialize(value: T): S;
     deserialize(value: S): T;
 };
 
 export class XtraJson {
-    #transformers: Record<string, Transformer<any, any>> = {
+    #transformers: Record<string, Transformer<unknown, unknown>> = {
         u: {
-            name: "u",
-            isApplicable(value: any): value is undefined {
+            name: "Unknown",
+            key: "u",
+            isApplicable(value: unknown): value is undefined {
                 return value === undefined;
             },
             serialize() {
@@ -25,8 +27,9 @@ export class XtraJson {
             },
         },
         i: {
-            name: "i",
-            isApplicable(value: any): value is BigInt {
+            name: "BigInt",
+            key: "i",
+            isApplicable(value: unknown): value is BigInt {
                 return typeof value === "bigint";
             },
             deserialize(value: string) {
@@ -37,8 +40,9 @@ export class XtraJson {
             },
         },
         b: {
-            name: "b",
-            isApplicable(value: any): value is Buffer {
+            name: "Buffer",
+            key: "b",
+            isApplicable(value: unknown): value is Buffer {
                 return value instanceof Buffer;
             },
             deserialize(value: string) {
@@ -49,8 +53,9 @@ export class XtraJson {
             },
         },
         d: {
-            name: "d",
-            isApplicable(value: any): value is Date {
+            name: "Date",
+            key: "d",
+            isApplicable(value: unknown): value is Date {
                 return value instanceof Date;
             },
             deserialize(value: string) {
@@ -63,22 +68,30 @@ export class XtraJson {
     };
 
     register<T, S>(transformer: Transformer<T, S>) {
-        this.#transformers[transformer.name] = transformer;
+        const existing = this.#transformers[transformer.key];
+
+        if (existing) {
+            throw new Error(`Transformer ${transformer.key} already registered for '${existing.name}'`);
+        }
+
+        this.#transformers[transformer.key] = transformer;
     }
 
-    serialize = (obj: any): any => {
+    serialize = (obj: unknown): unknown => {
+        const transformers = Object.values(this.#transformers);
+
         return transformDeep(obj, value => {
             if (["string", "boolean", "number"].includes(typeof value)) {
                 return PROCEED;
             }
 
-            const transformer = Object.values(this.#transformers).find(
+            const transformer = transformers.find(
                 transformer => transformer.isApplicable(value),
             );
 
             if (transformer) {
                 return {
-                    [`${MAGIC}${transformer.name}`]:
+                    [`${MAGIC}${transformer.key}`]:
                         transformer.serialize(value),
                 };
             }
@@ -87,7 +100,7 @@ export class XtraJson {
         });
     };
 
-    deserialize = (obj: any): any => {
+    deserialize = (obj: unknown): unknown => {
         return transformDeep(obj, value => {
             if (
                 typeof value !== "object" ||
@@ -113,4 +126,55 @@ export class XtraJson {
             return transformer.deserialize(payload);
         });
     };
+
+    stringify(data: unknown): string {
+        return JSON.stringify(data, this.replacer);
+    }
+
+    get replacer() {
+        const transformers = Object.values(this.#transformers);
+
+        return function(this: Record<string, unknown>, key: string) {
+            const value = this[key];
+
+            const transformer = transformers.find(
+                transformer => transformer.isApplicable(value),
+            );
+
+            if (transformer) {
+                return {
+                    [`${MAGIC}${transformer.key}`]:
+                        transformer.serialize(value),
+                };
+            }
+
+            return value;
+        }
+    }
+
+    parse(data: string): unknown {
+        return JSON.parse(data, this.reviver);
+    }
+
+    reviver = (_: string, value: unknown) => {
+        if (
+            typeof value !== "object" ||
+            Array.isArray(value) ||
+            value === null
+        ) {
+            return value;
+        }
+
+        const entries = Object.entries(value);
+        if (entries.length !== 1 || !entries[0][0].startsWith(MAGIC)) {
+            return value;
+        }
+
+        const [key, payload] = entries[0];
+        const transformer = this.#transformers[key.slice(1)];
+        if (!transformer) {
+            throw new Error(`Unknown transformer ${key.slice(1)}`);
+        }
+        return transformer.deserialize(payload);
+    }
 }
